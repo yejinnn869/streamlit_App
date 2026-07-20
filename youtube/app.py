@@ -147,13 +147,7 @@ if url:
             nouns = [t.form for t in tokens if t.tag.startswith("NN") and len(t.form) > 1]
             
             
-            # 한글 및 공백만 남기기
-            cleaned_text = re.sub(r'[^가-힣\s]', '', all_text)
-            
-            # 명사 추출
-            nouns = okt.nouns(cleaned_text)
-            nouns = [n for n in nouns if len(n) > 1]  # 1글자 단어 제외
-            
+    
             if nouns:
                 text_for_wc = " ".join(nouns)
                 
