@@ -138,8 +138,12 @@ if url:
             # --- 3. 한글 워드 클라우드 ---
             st.subheader("☁️ 댓글 한글 워드클라우드")
 
-            Kiwi = Kiwi()
-            tokens = Kiwi.tokenize(cleaned_text)
+            all_text = " ".join(df["text"].fillna("").astype(str))
+
+            cleaned_text = re.sub(r"[^가-힣\s]", " ", all_text)
+
+            kiwi = Kiwi()
+            tokens = kiwi.tokenize(cleaned_text)
             nouns = [t.form for t in tokens if t.tag.startswith("NN") and len(t.form) > 1]
             
             
