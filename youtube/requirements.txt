@@ -5,3 +5,5 @@ plotly
 wordcloud
 matplotlib
 konlpy
+kiwipiepy
+wordcloud
