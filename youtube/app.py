@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from googleapiclient.discovery import build
 from wordcloud import WordCloud
 from konlpy.tag import Okt
-from Kiwipiepy import Kiwi
+from kiwipiepy import Kiwi
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
