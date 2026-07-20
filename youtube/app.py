@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from googleapiclient.discovery import build
 from wordcloud import WordCloud
 from konlpy.tag import Okt
+from Kiwipiepy import Kiwi
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -136,11 +137,11 @@ if url:
 
             # --- 3. 한글 워드 클라우드 ---
             st.subheader("☁️ 댓글 한글 워드클라우드")
+
+            Kiwi = Kiwi()
+            tokens = Kiwi.tokenize(cleaned_text)
+            nouns = [t.form for t in tokens if t.tag.startswith("NN") and len(t.form) > 1]
             
-           from kiwipiepy import kiwi
-        kiwi = kiwi()
-        tokens = kiwi.tokenize(cleaned_text)
-        nouns = [t.form for t in tokens if t.tag.startswith("NN") and len(t.form) > 1]
             
             # 한글 및 공백만 남기기
             cleaned_text = re.sub(r'[^가-힣\s]', '', all_text)
