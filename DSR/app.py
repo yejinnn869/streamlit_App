@@ -11,11 +11,15 @@ from datetime import datetime
 # ---------------------------------------------------------------------------
 st.set_page_config(page_title="국가 가계부채 리스크 조기경보 시스템", layout="wide")
 
-st.title("🚨 국가 가계부채 리스크 예측 모델 (Open API 연동)")
-st.markdown("""
-한국은행 ECOS Open API를 통해 실제 거시경제 지표를 수집하고, 
-다변량 데이터 기반 머신러닝(Random Forest)으로 **국가 평균 가계 DSR**과 **가계대출 연체율**을 예측합니다.
-""")
+st.title("📈 가계부채 리스크 시나리오 분석 리포트")
+
+st.notice( # 또는 st.info
+    "**[데이터 기준 안내]**\n\n"
+    "• **학습 기반**: 2020년 1월 ~ 2026년 6월 한국은행(ECOS) **실제 거시경제 데이터**\n"
+    "• **예측 대상**: 사이드바에서 설정한 **가상 시나리오 조건** 적용 시 **다음 달 예상 리스크**"
+)
+
+st.markdown("---")
 
 # ---------------------------------------------------------------------------
 # 2. 한국은행 ECOS API 연동 함수
@@ -117,63 +121,113 @@ model_delinq = RandomForestRegressor(n_estimators=100, random_state=42)
 model_delinq.fit(X, y_delinq)
 
 # ---------------------------------------------------------------------------
-# 4. 사이드바 - 사용자 시나리오 입력 (UI)
+# 4.사이드바 상단 안내
 # ---------------------------------------------------------------------------
-st.sidebar.header("📊 다음 분기 경제 시나리오 설정")
-input_cd = st.sidebar.slider("시장금리 (CD 91일물, %)", min_value=0.5, max_value=6.0, value=3.5, step=0.1)
-input_cpi = st.sidebar.slider("소비자물가 증감률 (%)", min_value=0.0, max_value=6.0, value=3.0, step=0.1)
-input_debt = st.sidebar.slider("가계부채 증가율 (%)", min_value=0.0, max_value=12.0, value=5.0, step=0.1)
-input_policy = st.sidebar.radio("국가 상환유예 등 금융지원 정책", options=[0, 1], format_func=lambda x: "시행 중 (1)" if x == 1 else "미시행 (0)")
+
+st.sidebar.header("🧪 가상 시뮬레이션 설정")
+
+# 💡 [핵심] 사이드바의 용도를 명확히 알려주는 안내 상자
+st.sidebar.info(
+    "💡 **안내**\n\n"
+    "이 슬라이더들은 화면 하단의 **'[별도 기능] 사용자 정의 가상 시뮬레이션'** 영역에만 반영됩니다.\n\n"
+    "*(상단의 '다음 분기 예측 리포트'는 한국은행 Open API 실시간 데이터로 자동 계산됩니다.)*"
+)
+
+st.sidebar.markdown("---")
+
+# 가상 시뮬레이션에 사용할 슬라이더들
+st.sidebar.subheader("🎛️ 충격 테스트 조건 설정")
+cd_input = st.sidebar.slider("가상 CD금리 (%)", 0.5, 5.0, 3.2, 0.1)
+cpi_input = st.sidebar.slider("가상 소비자물가증감률 (%)", 0.0, 10.0, 2.5, 0.1)
+debt_input = st.sidebar.slider("가상 가계부채증가율 (%)", 0.0, 15.0, 4.0, 0.1)
+policy_input = st.sidebar.selectbox(
+    "가상 상환유예정책 여부", 
+    [0, 1], 
+    format_func=lambda x: "적용 (1)" if x == 1 else "미적용 (0)"
+)
 
 # ---------------------------------------------------------------------------
 # 5. 모델 예측 수행
 # ---------------------------------------------------------------------------
-input_data = pd.DataFrame({
-    'CD금리(%)': [input_cd], '소비자물가증감률(%)': [input_cpi],
-    '가계부채증가율(%)': [input_debt], '상환유예정책(0=X,1=O)': [input_policy]
-})
+import streamlit as st
+import pandas as pd
+import numpy as np
 
-pred_dsr = model_dsr.predict(input_data)[0]
-pred_delinq = model_delinq.predict(input_data)[0]
+# ==============================================================================
+# 📌 1. [메인 기능] Open API 실제 데이터 기반 추이 분석 및 다음 분기 예측
+# ==============================================================================
+st.title("📈 가계부채 리스크 분석 및 다음 분기 예측 리포트")
 
-# ---------------------------------------------------------------------------
-# 6. 결과 시각화 (Plotly)
-# ---------------------------------------------------------------------------
-st.subheader("🔮 거시 변수 시나리오 기반 리스크 예측 결과")
+# 최신 API 데이터의 마지막 행(또는 최근 추이 반영 행) 추출
+latest_row = df_cd.iloc[[-1]] 
+latest_date = str(latest_row['날짜'].values[0]) # 예: '202606'
+
+# 다음 분기 예측을 위한 입력 데이터 (최신 API 데이터 기반)
+X_real_trend = latest_row[['CD금리(%)', '소비자물가증감률(%)', '가계부채증가율(%)', '상환유예정책(0=X,1=O)']]
+
+# 모델을 통한 '실제 다음 분기' DSR & 연체율 예측
+next_quarter_dsr = model_dsr.predict(X_real_trend)[0]
+next_quarter_delinq = model_delinq.predict(X_real_trend)[0]
+
+# --- 메인 예측 결과 화면 ---
+st.subheader(f"🔮 실제 데이터를 통한 추이 기반 다음 분기 예측 결과")
+st.caption(f"📍 한국은행 Open API의 최근 시점({latest_date}) 거시경제 추이를 종합 반영한 다가오는 분기 예측치입니다.")
+
 col1, col2 = st.columns(2)
 
-def create_gauge(value, title, max_val, thresholds):
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number", value = value,
-        title = {'text': title, 'font': {'size': 20}},
-        number = {'valueformat': ".2f", 'suffix': "%"},
-        gauge = {
-            'axis': {'range': [None, max_val], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': "black"},
-            'bgcolor': "white", 'borderwidth': 2, 'bordercolor': "gray",
-            'steps': [
-                {'range': [0, thresholds[0]], 'color': "lightgreen"},
-                {'range': [thresholds[0], thresholds[1]], 'color': "yellow"},
-                {'range': [thresholds[1], max_val], 'color': "salmon"}
-            ],
-        }
-    ))
-    fig.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
-    return fig
-
 with col1:
-    fig_dsr = create_gauge(pred_dsr, "예측 국가 평균 DSR", 60, [35, 45])
+    fig_dsr = create_gauge(next_quarter_dsr, "다음 분기 예상 평균 DSR", 60, [35, 45])
     st.plotly_chart(fig_dsr, use_container_width=True)
-    if pred_dsr >= 45: st.error("⚠️ 가계부채 상환 부담 심각.")
-    elif pred_dsr >= 35: st.warning("경고: DSR 상승 우려.")
+    if next_quarter_dsr >= 45: st.error("⚠️ 가계부채 상환 부담 심각.")
+    elif next_quarter_dsr >= 35: st.warning("경고: DSR 상승 우려.")
     else: st.success("안전: 상환 여력 안정적.")
 
 with col2:
-    fig_delinq = create_gauge(pred_delinq, "예측 가계대출 연체율", 2.0, [0.8, 1.2])
+    fig_delinq = create_gauge(next_quarter_delinq, "다음 분기 예상 가계대출 연체율", 2.0, [0.8, 1.2])
     st.plotly_chart(fig_delinq, use_container_width=True)
-    if pred_delinq >= 1.2: st.error("⚠️ 금융 시스템 부실 위험 통제 필요.")
-    elif pred_delinq >= 0.8: st.warning("경고: 연체율 상승 관찰.")
+    if next_quarter_delinq >= 1.2: st.error("⚠️ 금융 시스템 부실 위험 통제 필요.")
+    elif next_quarter_delinq >= 0.8: st.warning("경고: 연체율 상승 관찰.")
     else: st.success("안전: 연체 리스크 통제 가능.")
+
+
+# 구분을 위한 시각적 구분선
+st.markdown("---")
+
+
+# ==============================================================================
+# 🧪 2. [부가 기능] 별도 가상 시뮬레이션 (What-If 실험실)
+# ==============================================================================
+# expander(접기/펴기)나 별도 섹션으로 물리적으로 완전히 분리
+with st.expander("🧪 [별도 기능] 사용자 정의 가상 시뮬레이션 (Stress Test)", expanded=False):
+    st.markdown("""
+    이곳은 실제 데이터 예측과 별개로, **"만약 급격한 금리 인상이나 충격이 발생한다면?"**을 가정해 보는 **독립된 실험 공간**입니다.
+    사이드바의 수치를 조작하여 다양한 가상 시나리오를 테스트해 보세요.
+    """)
+    
+    # 사이드바에서 받아온 가상 입력값 사용
+    X_sim = pd.DataFrame([{
+        'CD금리(%)': cd_input,
+        '소비자물가증감률(%)': cpi_input,
+        '가계부채증가율(%)': debt_input,
+        '상환유예정책(0=X,1=O)': policy_input
+    }])
+    
+    sim_dsr = model_dsr.predict(X_sim)[0]
+    sim_delinq = model_delinq.predict(X_sim)[0]
+    
+    sim_col1, sim_col2 = st.columns(2)
+    
+    with sim_col1:
+        st.metric(
+            label="가상 조건 적용 시 예상 DSR",
+            value=f"{sim_dsr:.2f}%"
+        )
+    
+    with sim_col2:
+        st.metric(
+            label="가상 조건 적용 시 예상 연체율",
+            value=f"{sim_delinq:.2f}%"
+        )
 
 # ---------------------------------------------------------------------------
 # 7. 기초 데이터 표 확인
