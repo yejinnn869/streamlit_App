@@ -20,7 +20,7 @@ st.markdown("""
 # 2. 한국은행 ECOS API 연동 함수
 # ---------------------------------------------------------------------------
 # Streamlit Cloud 설정(Secrets)에서 API 키를 가져오거나, 아래에 직접 입력하세요.
-API_KEY = st.secrets.get("BOK_API_KEY", "여기에_발급받은_API키를_입력하세요")
+API_KEY = st.secrets.get("BOK_API_KEY", "31YTTV1LTR4TIOTYDW8B")
 
 @st.cache_data
 def fetch_ecos_data(stat_code, item_code, start_month, end_month):
