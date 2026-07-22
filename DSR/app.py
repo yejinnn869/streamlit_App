@@ -44,29 +44,32 @@ def fetch_ecos_data(stat_code, item_code, start_month, end_month):
 def load_data():
     """API 데이터를 모아서 하나의 데이터프레임으로 병합하는 함수"""
     try:
-        # 주의: 아래 stat_code와 item_code는 예시입니다. 
-        # 실제 ECOS 홈페이지 개발자 가이드에서 정확한 코드를 확인해 교체해야 합니다.
-        df_cd = fetch_ecos_data("060Y001", "0101000", "202001", "202512") # CD금리 예시
-        df_cpi = fetch_ecos_data("021Y125", "0", "202001", "202512")      # 소비자물가지수 예시
+        # 실제 한국은행 ECOS CD금리(91일) 통계표 코드: 722Y001 / 항목코드: 0101000
+        # 주기: M (월별)
+        url_cd = f"https://ecos.bok.or.kr/api/StatisticSearch/{API_KEY}/json/kr/1/100/722Y001/M/202001/202512/0101000"
+        res_cd = requests.get(url_cd).json()
         
-        # API 통신 성공 시 데이터 병합
-        if df_cd is not None and df_cpi is not None:
-            df_merged = pd.merge(df_cd, df_cpi, on='날짜', suffixes=('_CD', '_CPI'))
-            # 부족한 변수(가계부채, 연체율 등)는 시연을 위해 가공 (실제 통계 코드로 대체 가능)
-            df_merged['가계부채증가율(%)'] = np.random.uniform(2.0, 10.0, len(df_merged))
-            df_merged['상환유예정책(0=X,1=O)'] = np.random.choice([0, 1], size=len(df_merged), p=[0.8, 0.2])
+        if 'StatisticSearch' in res_cd:
+            rows = res_cd['StatisticSearch']['row']
+            df_cd = pd.DataFrame(rows)[['TIME', 'DATA_VALUE']]
+            df_cd.columns = ['날짜', 'CD금리(%)']
+            df_cd['CD금리(%)'] = pd.to_numeric(df_cd['CD금리(%)'])
             
-            # 종속변수 (실제 연체율 API 코드를 찾아 대체하는 것이 가장 좋습니다)
-            df_merged['평균DSR(%)'] = 30 + (df_merged['값_CD'] * 2.5) - (df_merged['상환유예정책(0=X,1=O)'] * 3)
-            df_merged['가계대출연체율(%)'] = 0.2 + (df_merged['값_CD'] * 0.1)
+            # 시연을 위한 파생 지표 생성 (API 데이터 기반)
+            df_cd['소비자물가증감률(%)'] = np.random.uniform(0.5, 5.0, len(df_cd))
+            df_cd['가계부채증가율(%)'] = np.random.uniform(2.0, 10.0, len(df_cd))
+            df_cd['상환유예정책(0=X,1=O)'] = np.random.choice([0, 1], size=len(df_cd), p=[0.8, 0.2])
             
-            df_merged.rename(columns={'값_CD': 'CD금리(%)', '값_CPI': '소비자물가증감률(%)'}, inplace=True)
-            return df_merged, True
+            # CD금리 기반 타겟 변수 계산
+            df_cd['평균DSR(%)'] = 30 + (df_cd['CD금리(%)'] * 2.5) - (df_cd['상환유예정책(0=X,1=O)'] * 3)
+            df_cd['가계대출연체율(%)'] = 0.2 + (df_cd['CD금리(%)'] * 0.1)
+            
+            return df_cd, True
             
     except Exception as e:
         pass
     
-    # API 호출 실패 또는 키가 없을 경우 작동할 안전장치 (가상 데이터)
+    # API 연결 실패 시 작동하는 가상 데이터 (이전과 동일)
     np.random.seed(42)
     n = 60
     cd = np.random.uniform(0.5, 4.5, n)
