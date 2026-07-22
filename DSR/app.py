@@ -67,7 +67,7 @@ def load_data_complete():
             df['소비자물가증감률(%)'] = np.random.uniform(0.5, 5.0, n_rows)
             df['가계부채증가율(%)'] = np.random.uniform(2.0, 10.0, n_rows)
             
-            # 💡 역사적 정부 정책 지원 강도 지수 (0: 없음 ~ 3: 전면 유예)
+            # 역사적 정부 정책 지원 강도 지수 (0: 없음 ~ 3: 전면 유예)
             policy_index = []
             for d in df['날짜']:
                 d_str = str(d)
@@ -80,7 +80,7 @@ def load_data_complete():
             # 시차 변수 생성 (3개월 이동평균 금리)
             df['CD금리_3개월평균'] = df['CD금리(%)'].rolling(window=3, min_periods=1).mean()
             
-            # 타겟 변수 세팅 (정책 지원 강도가 높을수록 리스크 상승을 억제)
+            # 타겟 변수 세팅
             df['평균DSR(%)'] = 30 + (df['CD금리_3개월평균'] * 2.2) - (df['정책지원강도지수'] * 1.5)
             df['가계대출연체율(%)'] = 0.2 + (df['CD금리_3개월평균'] * 0.14) - (df['정책지원강도지수'] * 0.07)
             df['가계대출연체율(%)'] = df['가계대출연체율(%)'].clip(lower=0.1)
@@ -90,7 +90,7 @@ def load_data_complete():
     except Exception as e:
         pass
     
-    # API 실패 시 작동하는 백업 데이터 세트
+    # 백업 데이터 세트
     np.random.seed(42)
     n = 60
     dates = pd.date_range(start='2020-01-01', periods=n, freq='ME').strftime('%Y%m')
@@ -137,24 +137,53 @@ model_dsr = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y_ds
 model_delinq = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y_delinq)
 
 # ---------------------------------------------------------------------------
-# 4. 사이드바 (가상 충격 및 정책 강도 조정 패널)
+# 4. 최신 실제 데이터 기준값 추출 및 session_state 초기화 (리셋 기능 핵심)
+# ---------------------------------------------------------------------------
+latest_row = df.iloc[[-1]]
+latest_date = str(latest_row['날짜'].values[0])
+
+base_cd = float(latest_row['CD금리(%)'].values[0])
+base_cpi = float(latest_row['소비자물가증감률(%)'].values[0])
+base_debt = float(latest_row['가계부채증가율(%)'].values[0])
+base_policy = float(latest_row['정책지원강도지수'].values[0])
+
+# 초기 session_state 세팅
+if 'cd_input' not in st.session_state:
+    st.session_state.cd_input = base_cd
+if 'cpi_input' not in st.session_state:
+    st.session_state.cpi_input = base_cpi
+if 'debt_input' not in st.session_state:
+    st.session_state.debt_input = base_debt
+if 'policy_input' not in st.session_state:
+    st.session_state.policy_input = base_policy
+
+# 리셋 버튼용 콜백 함수
+def reset_to_baseline():
+    st.session_state.cd_input = base_cd
+    st.session_state.cpi_input = base_cpi
+    st.session_state.debt_input = base_debt
+    st.session_state.policy_input = base_policy
+
+# ---------------------------------------------------------------------------
+# 5. 사이드바 (리셋 버튼 + 슬라이더 컨트롤)
 # ---------------------------------------------------------------------------
 st.sidebar.header("🧪 가상 시뮬레이션 조건 설정")
 st.sidebar.info("💡 사이드바의 조건들은 하단의 **'[별도 기능] 사용자 정의 가상 시뮬레이션'** 영역에 즉시 반영됩니다.")
 
+# 🔄 리셋 버튼
+st.sidebar.button("🔄 실제 예측값(최신 데이터)으로 리셋", on_click=reset_to_baseline, use_container_width=True)
+
 st.sidebar.markdown("---")
-
-latest_cd = float(df.iloc[-1]['CD금리(%)'])
-
 st.sidebar.subheader("🎛️ 시장 경제 및 정책 지수 조작")
-cd_input = st.sidebar.slider("가상 CD금리 (%)", 0.5, 6.0, latest_cd, 0.1)
-cpi_input = st.sidebar.slider("가상 소비자물가증감률 (%)", 0.0, 10.0, 2.5, 0.1)
-debt_input = st.sidebar.slider("가상 가계부채증가율 (%)", 0.0, 15.0, 4.0, 0.1)
+
+cd_input = st.sidebar.slider("가상 CD금리 (%)", 0.5, 6.0, step=0.1, key="cd_input")
+cpi_input = st.sidebar.slider("가상 소비자물가증감률 (%)", 0.0, 10.0, step=0.1, key="cpi_input")
+debt_input = st.sidebar.slider("가상 가계부채증가율 (%)", 0.0, 15.0, step=0.1, key="debt_input")
 
 policy_input = st.sidebar.select_slider(
     "정부 금융 지원 정책 강도",
     options=[0.0, 1.0, 2.0, 3.0],
-    value=1.0,
+    key="policy_input",
     format_func=lambda x: {
         0.0: "0단계: 지원 없음 (시장 자율)",
         1.0: "1단계: 취약차주 미시 지원",
@@ -164,11 +193,8 @@ policy_input = st.sidebar.select_slider(
 )
 
 # ---------------------------------------------------------------------------
-# 5. [메인 기능] 실제 API 데이터 기반 다음 분기 예측 결과
+# 6. [메인 기능] 실제 API 데이터 기반 다음 분기 예측 결과
 # ---------------------------------------------------------------------------
-latest_row = df.iloc[[-1]]
-latest_date = str(latest_row['날짜'].values[0])
-
 X_real_trend = latest_row[feature_cols]
 
 next_quarter_dsr = model_dsr.predict(X_real_trend)[0]
@@ -196,7 +222,7 @@ with col2:
 st.markdown("---")
 
 # ---------------------------------------------------------------------------
-# 6. [부가 기능] 사용자 정의 가상 시뮬레이션 및 정책 완충 분석
+# 7. [부가 기능] 사용자 정의 가상 시뮬레이션 및 정책 완충 분석
 # ---------------------------------------------------------------------------
 with st.expander("🧪 [별도 기능] 사용자 정의 가상 시뮬레이션 (Stress Test)", expanded=True):
     st.markdown("""
@@ -204,14 +230,15 @@ with st.expander("🧪 [별도 기능] 사용자 정의 가상 시뮬레이션 (
     사이드바에서 금리와 **'정부 정책 지원 강도(0~3단계)'**를 조작하여 수치를 비교해 보세요.
     """)
     
-    sim_3m_avg = (latest_cd + cd_input) / 2
+    # 가상 3개월 평균 금리 계산 (최근 CD금리와 가상 CD금리의 평균)
+    sim_3m_avg = (base_cd + st.session_state.cd_input) / 2
     
     X_sim = pd.DataFrame([{
-        'CD금리(%)': cd_input,
+        'CD금리(%)': st.session_state.cd_input,
         'CD금리_3개월평균': sim_3m_avg,
-        '소비자물가증감률(%)': cpi_input,
-        '가계부채증가율(%)': debt_input,
-        '정책지원강도지수': policy_input
+        '소비자물가증감률(%)': st.session_state.cpi_input,
+        '가계부채증가율(%)': st.session_state.debt_input,
+        '정책지원강도지수': st.session_state.policy_input
     }])
     
     sim_dsr = model_dsr.predict(X_sim)[0]
@@ -249,7 +276,7 @@ with st.expander("🧪 [별도 기능] 사용자 정의 가상 시뮬레이션 (
     st.table(pd.DataFrame(policy_comparison))
 
 # ---------------------------------------------------------------------------
-# 7. 기초 데이터 표 확인
+# 8. 기초 데이터 표 확인
 # ---------------------------------------------------------------------------
 st.markdown("---")
 st.subheader("📚 학습 및 분석에 사용된 시계열 데이터 (시차 & 정책 지수 포함)")
