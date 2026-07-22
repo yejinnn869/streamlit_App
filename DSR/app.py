@@ -77,7 +77,7 @@ def load_data():
     delinq = 0.2 + (cd * 0.1) + (cpi * 0.05) - (policy * 0.3) + np.random.normal(0, 0.05, n)
     
     df_mock = pd.DataFrame({
-        '날짜': pd.date_range(start='2020-01-01', periods=n, freq='M').strftime('%Y%m'),
+        '날짜': pd.date_range(start='2020-01-01', periods=n, freq='ME').strftime('%Y%m'),
         'CD금리(%)': cd, '소비자물가증감률(%)': cpi, '가계부채증가율(%)': debt,
         '상환유예정책(0=X,1=O)': policy, '평균DSR(%)': dsr, '가계대출연체율(%)': delinq
     })
