@@ -4,6 +4,7 @@ import numpy as np
 import requests
 from sklearn.ensemble import RandomForestRegressor
 import plotly.graph_objects as go
+from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # 1. 페이지 기본 설정
@@ -43,10 +44,13 @@ def fetch_ecos_data(stat_code, item_code, start_month, end_month):
 @st.cache_data
 def load_data():
     """API 데이터를 모아서 하나의 데이터프레임으로 병합하는 함수"""
+    
+    # 💡 오늘 날짜 기준으로 'YYYYMM' 형식의 현재 연월 생성 (예: '202607')
+    current_ym = datetime.today().strftime('%Y%m')
+    
     try:
-        # 실제 한국은행 ECOS CD금리(91일) 통계표 코드: 722Y001 / 항목코드: 0101000
-        # 주기: M (월별)
-        url_cd = f"https://ecos.bok.or.kr/api/StatisticSearch/{API_KEY}/json/kr/1/100/722Y001/M/202001/202512/0101000"
+        # 종료 연월 위치에 '202512' 대신 {current_ym} 변수 삽입
+        url_cd = f"https://ecos.bok.or.kr/api/StatisticSearch/{API_KEY}/json/kr/1/100/722Y001/M/202001/{current_ym}/0101000"
         res_cd = requests.get(url_cd).json()
         
         if 'StatisticSearch' in res_cd:
@@ -55,12 +59,17 @@ def load_data():
             df_cd.columns = ['날짜', 'CD금리(%)']
             df_cd['CD금리(%)'] = pd.to_numeric(df_cd['CD금리(%)'])
             
-            # 시연을 위한 파생 지표 생성 (API 데이터 기반)
-            df_cd['소비자물가증감률(%)'] = np.random.uniform(0.5, 5.0, len(df_cd))
-            df_cd['가계부채증가율(%)'] = np.random.uniform(2.0, 10.0, len(df_cd))
-            df_cd['상환유예정책(0=X,1=O)'] = np.random.choice([0, 1], size=len(df_cd), p=[0.8, 0.2])
+            # 실제 날짜 길이에 맞춰 파생 변수 생성
+            n_rows = len(df_cd)
+            df_cd['소비자물가증감률(%)'] = np.random.uniform(0.5, 5.0, n_rows)
+            df_cd['가계부채증가율(%)'] = np.random.uniform(2.0, 10.0, n_rows)
             
-            # CD금리 기반 타겟 변수 계산
+            # 실제 상환유예 정책 기간(202004~202309) 반영
+            df_cd['상환유예정책(0=X,1=O)'] = df_cd['날짜'].apply(
+                lambda x: 1 if '202004' <= str(x) <= '202309' else 0
+            )
+            
+            # 타겟 변수 생성
             df_cd['평균DSR(%)'] = 30 + (df_cd['CD금리(%)'] * 2.5) - (df_cd['상환유예정책(0=X,1=O)'] * 3)
             df_cd['가계대출연체율(%)'] = 0.2 + (df_cd['CD금리(%)'] * 0.1)
             
@@ -69,7 +78,7 @@ def load_data():
     except Exception as e:
         pass
     
-    # API 연결 실패 시 작동하는 가상 데이터 (이전과 동일)
+    # API 연결 실패 시 작동하는 가상 데이터
     np.random.seed(42)
     n = 60
     cd = np.random.uniform(0.5, 4.5, n)
