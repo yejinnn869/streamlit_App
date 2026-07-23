@@ -1,5 +1,5 @@
 import streamlit as st
-import FinanceDataReader as fdr
+import yfinance as yf
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 st.title("📊 환율 변동과 기업 주가의 '합리적 무시' 실증 분석")
-st.caption("공공 데이터(FinanceDataReader) 기반 거시경제-행동경제학 융합 탐구 대시보드")
+st.caption("야후 파이낸스(yfinance) 기반 거시경제-행동경제학 융합 탐구 대시보드")
 
 # 이론적 배경 설명 상자
 with st.expander("💡 행동경제학: '합리적 무시(Rational Inattention)' 이론이란?", expanded=True):
@@ -31,10 +31,10 @@ with st.expander("💡 행동경제학: '합리적 무시(Rational Inattention)'
 # ==========================================
 st.sidebar.header("⚙️ 분석 설정 패널")
 
-# 2-1. 분석 대상 기업 선택
+# 2-1. 분석 대상 기업 선택 (야후 파이낸스 티커 적용)
 company_dict = {
-    "삼성전자 (수출 중심 기업)": "005930",
-    "CJ제일제당 (내수/수입 중심 기업)": "097950"
+    "삼성전자 (수출 중심 기업)": "005930.KS",
+    "CJ제일제당 (내수/수입 중심 기업)": "097950.KS"
 }
 selected_company_name = st.sidebar.selectbox("1. 분석 기업 선택", list(company_dict.keys()))
 selected_code = company_dict[selected_company_name]
@@ -57,29 +57,44 @@ threshold = st.sidebar.slider(
 )
 
 # ==========================================
-# 3. 데이터 수집 및 전처리 (캐싱 적용)
+# 3. 데이터 수집 및 전처리 (yfinance 사용)
 # ==========================================
-@st.cache_data
+@st.cache_data(ttl=3600) # 1시간 동안 데이터 캐싱
 def load_data(stock_code, start, end):
-    # 원/달러 환율 데이터 불러오기
-    df_fx = fdr.DataReader('USD/KRW', start, end)[['Close']].rename(columns={'Close': 'FX_Price'})
-    # 선택한 기업 주가 데이터 불러오기
-    df_stock = fdr.DataReader(stock_code, start, end)[['Close']].rename(columns={'Close': 'Stock_Price'})
-    
-    # 두 데이터 병합 (날짜 기준)
-    df = pd.merge(df_fx, df_stock, left_index=True, right_index=True, how='inner')
-    
-    # 일간 변동률 (%) 계산
-    df['FX_Change'] = df['FX_Price'].pct_change().abs() * 100 # 환율은 절댓값 변동률
-    df['Stock_Change'] = df['Stock_Price'].pct_change() * 100 # 주가 변동률
-    
-    return df.dropna()
+    try:
+        # 환율 데이터 (USD/KRW)
+        fx = yf.Ticker("KRW=X")
+        df_fx = fx.history(start=start, end=end)[['Close']].rename(columns={'Close': 'FX_Price'})
+        
+        # 주가 데이터
+        stock = yf.Ticker(stock_code)
+        df_stock = stock.history(start=start, end=end)[['Close']].rename(columns={'Close': 'Stock_Price'})
+        
+        # 타임존 제거 (날짜 매칭 오류 방지)
+        df_fx.index = df_fx.index.tz_localize(None)
+        df_stock.index = df_stock.index.tz_localize(None)
+        
+        # 병합
+        df = pd.merge(df_fx, df_stock, left_index=True, right_index=True, how='inner')
+        
+        # 변동률 (%) 계산
+        df['FX_Change'] = df['FX_Price'].pct_change().abs() * 100
+        df['Stock_Change'] = df['Stock_Price'].pct_change() * 100
+        
+        return df.dropna()
+    except Exception as e:
+        st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
+        return pd.DataFrame()
 
-# 데이터 로딩 상태 표시
-with st.spinner('금융 데이터를 불러오는 중입니다...'):
+# 데이터 로딩
+with st.spinner('금융 데이터를 안정적으로 수집하는 중입니다...'):
     data = load_data(selected_code, start_date, end_date)
 
-# 선택한 임계값 기준으로 구간 분류 (무시 구간 vs 반응 구간)
+if data.empty:
+    st.warning("선택한 기간의 데이터가 없거나 불러오지 못했습니다. 날짜 범위를 변경해보세요.")
+    st.stop()
+
+# 구간 분류
 data['Group'] = data['FX_Change'].apply(
     lambda x: '반응 구간 (임계값 초과)' if x > threshold else '무시 구간 (임계값 이하)'
 )
@@ -88,17 +103,15 @@ data['Group'] = data['FX_Change'].apply(
 # 4. 시각화 및 데이터 분석 리포트
 # ==========================================
 
-# --- [파트 1] 시계열 추이 비교 차트 (이중 축) ---
+# --- [파트 1] 시계열 추이 비교 차트 ---
 st.subheader("1. 원/달러 환율 추이 vs 기업 주가 추이")
 
 fig1 = make_subplots(specs=[[{"secondary_y": True}]])
 
-# 주가 그래프 (좌측 Y축)
 fig1.add_trace(
     go.Scatter(x=data.index, y=data['Stock_Price'], name=selected_company_name, line=dict(color='#2b5c8f', width=2)),
     secondary_y=False
 )
-# 환율 그래프 (우측 Y축)
 fig1.add_trace(
     go.Scatter(x=data.index, y=data['FX_Price'], name="원/달러 환율 (KRW)", line=dict(color='#e67e22', width=2, dash='dot')),
     secondary_y=True
@@ -119,12 +132,11 @@ st.divider()
 # --- [파트 2] 합리적 무시 실증 분석 및 리포트 ---
 st.subheader("2. '합리적 무시' 임계점 기반 주가 변동성 비교")
 
-# 통계 수치 계산
 group_ignored = data[data['Group'] == '무시 구간 (임계값 이하)']
 group_reacted = data[data['Group'] == '반응 구간 (임계값 초과)']
 
-avg_vol_ignored = group_ignored['Stock_Change'].abs().mean()
-avg_vol_reacted = group_reacted['Stock_Change'].abs().mean()
+avg_vol_ignored = group_ignored['Stock_Change'].abs().mean() if len(group_ignored) > 0 else 0
+avg_vol_reacted = group_reacted['Stock_Change'].abs().mean() if len(group_reacted) > 0 else 0
 
 col1, col2, col3 = st.columns(3)
 
@@ -169,7 +181,6 @@ fig2 = px.scatter(
     title=f"환율 변동률에 따른 주가 변동 분포 (기준 임계값: {threshold}%)"
 )
 
-# 임계값 세로 수직선 추가
 fig2.add_vline(x=threshold, line_width=2, line_dash="dash", line_color="red")
 
 st.plotly_chart(fig2, use_container_width=True)
@@ -178,5 +189,5 @@ st.plotly_chart(fig2, use_container_width=True)
 st.info(f"""
 📌 **실증 분석 결과 요약**
 * 현재 설정된 환율 인지 임계값 **({threshold}%)** 이하에서는 주가 일간 변동폭이 평균 **{avg_vol_ignored:.2f}%**로 비교적 안정적이었습니다.
-* 그러나 환율 변동률이 임계값을 초과하는 **반응 구간**에 진입하면 주가 일간 변동폭이 평균 **{avg_vol_reacted:.2f}%**로 급증하는 비선형적 특성을 확인할 수 있습니다.
+* 그러나 환율 변동률이 임계값을 초과하는 **반응 구간**에 진입하면 주가 일간 변동폭이 평균 **{avg_vol_reacted:.2f}%**로 변화하는 비선형적 특성을 확인할 수 있습니다.
 """)
