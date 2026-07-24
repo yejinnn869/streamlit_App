@@ -13,7 +13,7 @@ ECOS_API_KEY = "31YTTV1LTRTIOTYDW8B"
 @st.cache_data(ttl=3600)  # 1시간마다 API 캐싱 (호출 제한 방지)
 def fetch_ecos_data(stat_code, item_code, frequency="M"):
     """한국은행 ECOS API에서 최신 수치 1건을 조회하는 함수"""
-    if ECOS_API_KEY == "YOUR_ECOS_API_KEY":
+    if ECOS_API_KEY == "31YTTV1LTRTIOTYDW8B":
         # API 키가 미입력되었을 때의 방어 로직 (기본값 제공)
         return None
 
