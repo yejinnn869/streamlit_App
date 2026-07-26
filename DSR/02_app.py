@@ -6,12 +6,12 @@ import streamlit as st
 # ==========================================
 # 0. 한국은행 ECOS API 연동 및 데이터 수집
 # ==========================================
-ECOS_API_KEY = "YOUR_ECOS_API_KEY"  # 🔑 발급받으신 ECOS API 키 입력
+ECOS_API_KEY = "31YTTV1LTRTIOTYDW8B"  # 🔑 발급받으신 ECOS API 키 입력
 
 
 @st.cache_data(ttl=3600)
 def fetch_ecos_history(stat_code, item_code, frequency="M"):
-    if ECOS_API_KEY == "YOUR_ECOS_API_KEY":
+    if ECOS_API_KEY == "31YTTV1LTRTIOTYDW8B":
         # API 키 미입력 시 백업 데이터 (Pandas 최신 버전 호환 freq='ME')
         dates = pd.date_range(
             end=datetime.datetime.now(), periods=12, freq="ME"
