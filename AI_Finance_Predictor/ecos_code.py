@@ -4,7 +4,7 @@ ECOS_INDICATORS = {
 
     "cd91": {
         "name": "CD(91일)",
-        "stat_code": "실제통계표코드",
+        "stat_code": "721Y001",
         "item_code1": "실제항목코드1",
         "item_code2": "",
         "item_code3": "",
