@@ -7,12 +7,12 @@ import streamlit as st
 # ==========================================
 # 0. 한국은행 ECOS API 연동 및 데이터 수집
 # ==========================================
-ECOS_API_KEY = "31YTTV1LTRTIOTYDW8B"  # 🔑 발급받으신 ECOS API 키 입력
+ECOS_API_KEY = st.secrets["ECOS_API_KEY"]  # 🔑 발급받으신 ECOS API 키 입력
 
 @st.cache_data(ttl=3600)
 def fetch_ecos_history(stat_code, item_code, frequency="M"):
     """최근 1년간의 시계열 데이터를 가져오는 함수 (차트 및 최신값 추출용)"""
-    if ECOS_API_KEY == "31YTTV1LTRTIOTYDW8B":
+    if ECOS_API_KEY == st.secrets[ECOS_API_KEY"]:
         # API 키 미입력 시 백업용 최근 1년 시뮬레이션 데이터 생성
         dates = pd.date_range(end=datetime.datetime.now(), periods=12, freq='ME').strftime("%Y-%m")
         rates = [3.85, 3.83, 3.78, 3.75, 3.70, 3.68, 3.65, 3.60, 3.58, 3.56, 3.55, 3.55]
