@@ -34,9 +34,9 @@ ECOS_INDICATORS = {
         "CYCLE": "M"
     },
 
-    "household_credit": {
+    "household_loan": {
       "STAT_CODE": "151Y002",
-        "STAT_NAME": "1.2.4.2.1. 예금취급기관 가계대출(업권별,월),
+        "STAT_NAME": "1.2.4.2.1. 예금취급기관 가계대출(업권별,월)",
         "ITEM_CODE1": "1110000",
         "ITEM_NAME1": "예금취급기관",
         "CYCLE": "M"
