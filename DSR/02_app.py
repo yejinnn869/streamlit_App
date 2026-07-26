@@ -6,7 +6,7 @@ import streamlit as st
 # ==========================================
 # 0. 한국은행 ECOS API 연동 및 데이터 수집
 # ==========================================
-# 🔑 요청하신 ECOS API 키가 설정되었습니다.
+# 🔑 ECOS API 키
 ECOS_API_KEY = "31YTTV1LTRTIOTYDW8B"
 
 
@@ -31,7 +31,7 @@ def fetch_ecos_history(stat_code, item_code, frequency="M"):
     except Exception as e:
         st.error(f"API 데이터 호출 중 오류 발생: {e}")
 
-    # 예외 발생 시 백업용 시뮬레이션 데이터 (Pandas 최신 버전 호환 freq='ME')
+    # 백업용 데이터
     dates = pd.date_range(
         end=datetime.datetime.now(), periods=12, freq="ME"
     ).strftime("%Y-%m")
@@ -64,11 +64,17 @@ real_debt_growth = 4.2
 # 1. 단기(1개월) ~ 중기(6개월) 구간별 예측 함수
 # ==========================================
 def predict_macro_timeline(cpi_rate, debt_growth, policy_index, base_cd):
-    """당장 다음 달(1개월), 3개월, 6개월 후까지의 단계별 금리/DSR/연체율을 추정하는 함수"""
+    """당장 다음 달(1개월), 3개월, 6개월 후까지의 단계별 금리/DSR/연체율을 추정하는 함수 (동결 및 하락 가능)"""
     timeline_data = []
 
-    # 월별 추세 압력 계수 산출
-    monthly_trend = ((cpi_rate - 2.0) * 0.05) + (debt_growth * 0.02)
+    # 물가(2.5% 기준), 부채(3.0% 기준) 이탈률 및 정책 효과로 월별 변동 압력 산출
+    cpi_pressure = (cpi_rate - 2.5) * 0.04
+    debt_pressure = (debt_growth - 3.0) * 0.02
+    policy_effect = policy_index * 0.04
+
+    # 순 월별 추세 변화량 (음수가 되면 금리가 하락)
+    monthly_trend = cpi_pressure + debt_pressure - policy_effect
+
     months_list = [0, 1, 3, 6]
 
     for m in months_list:
@@ -77,20 +83,21 @@ def predict_macro_timeline(cpi_rate, debt_growth, policy_index, base_cd):
             dsr = 38.5 + (rate * 1.0) - (policy_index * 1.5)
             default_rate = 0.35 + (rate * 0.1) - (policy_index * 0.2)
         else:
-            rate = max(
-                1.0, base_cd + (monthly_trend * m) - (policy_index * 0.02 * m)
-            )
+            # 경과월(m)에 따른 예측 금리
+            rate = max(1.0, base_cd + (monthly_trend * m))
+
+            # 시차 반영 DSR 및 연체율
             dsr = (
                 38.5
-                + (rate * (1.0 + 0.04 * m))
-                + (debt_growth * 0.06 * m)
-                - (policy_index * (1.5 + 0.05 * m))
+                + (rate * 1.1)
+                + (debt_growth * 0.2)
+                - (policy_index * 1.5)
             )
             default_rate = (
                 0.35
-                + (rate * (0.1 + 0.01 * m))
-                + (cpi_rate * 0.02 * m)
-                - (policy_index * (0.2 + 0.01 * m))
+                + (rate * 0.12)
+                + (cpi_rate * 0.05)
+                - (policy_index * 0.2)
             )
 
         default_rate = max(0.1, default_rate)
@@ -128,7 +135,7 @@ def calculate_personal_dsr(annual_income, loan_amount, years, interest_rate):
 
 
 # ==========================================
-# 2. 메인 화면 구성 (1번/2번 모듈 순서 변경)
+# 2. 메인 화면 구성
 # ==========================================
 st.set_page_config(
     page_title="ECOS 연동 가계부채 단기~중기 예측 진단", page_icon="🏦", layout="wide"
@@ -144,7 +151,7 @@ app_mode = st.sidebar.radio(
 df_t = predict_macro_timeline(real_cpi_rate, real_debt_growth, 1, real_cd_rate)
 
 # ------------------------------------------
-# 모듈 1: 개인 맞춤 재무 리포트 (순서 1번으로 변경)
+# 모듈 1: 개인 맞춤 재무 리포트
 # ------------------------------------------
 if app_mode == "👤 1. 개인 맞춤 재무 리포트":
     st.title("👤 개인 맞춤형 대출 / 단계별(다음 달~6개월 후) 상환 스케줄")
@@ -181,7 +188,6 @@ if app_mode == "👤 1. 개인 맞춤 재무 리포트":
     with col2:
         st.subheader("📄 내 단계별(다음 달 ~ 6개월 후) 예상 상환 스케줄")
 
-        # 시점별 개인 원리금 및 DSR 계산
         personal_schedule = []
         curr_p = 0
 
@@ -204,7 +210,7 @@ if app_mode == "👤 1. 개인 맞춤 재무 리포트":
                     "시점": m_label,
                     "예측 적용 금리": f"{r}%",
                     "예상 월 원리금": f"{pay:,} 원",
-                    "현재 대비 월 지출 증가액": diff_str,
+                    "현재 대비 월 지출 변화액": diff_str,
                     "내 개인 DSR": f"{dsr}%",
                 }
             )
@@ -217,7 +223,7 @@ if app_mode == "👤 1. 개인 맞춤 재무 리포트":
         p1.metric(
             "당장 다음 달 예상 원리금",
             m1_pay_info["예상 월 원리금"],
-            delta=m1_pay_info["현재 대비 월 지출 증가액"],
+            delta=m1_pay_info["현재 대비 월 지출 변화액"],
         )
         p2.metric("다음 달 내 DSR", m1_pay_info["내 개인 DSR"])
 
@@ -229,13 +235,13 @@ if app_mode == "👤 1. 개인 맞춤 재무 리포트":
         if m6_dsr_val > 40.0:
             st.error(
                 f"🚨 **[경고] 6개월 내 DSR({m6_dsr_val}%) 규제 상한 초과 예상!**\n\n"
-                "👉 당장 다음 달부터 월 지출이 늘어나므로, **지금 즉시 고정금리 대환대출 신청이나 지출 축소 계획**을 세우셔야 합니다."
+                "👉 당장 다음 달부터 월 지출이 늘어날 수 있으므로, **지금 즉시 고정금리 대환대출 신청이나 지출 축소 계획**을 세우셔야 합니다."
             )
         else:
             st.success("✅ **[안정] 6개월 내 DSR이 40% 이하로 안전하게 유지됩니다.**")
 
 # ------------------------------------------
-# 모듈 2: 국가 거시 리스크 예측 (순서 2번으로 변경)
+# 모듈 2: 국가 거시 리스크 예측
 # ------------------------------------------
 elif app_mode == "🌐 2. 국가 거시 리스크 예측":
     st.title("🌐 국가 거시 리스크 단계별 예측 시뮬레이터")
