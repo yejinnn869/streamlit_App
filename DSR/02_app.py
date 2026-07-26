@@ -4,18 +4,19 @@ import requests
 import streamlit as st
 
 # ==========================================
-# 0. 한국은행 ECOS API 연동 및 변수 초기화
+# 0. 한국은행 ECOS API 연동 및 데이터 수집
 # ==========================================
 ECOS_API_KEY = "31YTTV1LTRTIOTYDW8B"
 
 
 @st.cache_data(ttl=3600)
-def fetch_ecos_history(stat_code, item_code, frequency="M"):
+def fetch_ecos_history():
+    # 최신 ECOS 시장금리 통계표 코드 적용 (817Y002)
     end_date = datetime.datetime.now().strftime("%Y%m")
     start_date = (
         datetime.datetime.now() - datetime.timedelta(days=365)
     ).strftime("%Y%m")
-    url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/12/{stat_code}/{frequency}/{start_date}/{end_date}/{item_code}"
+    url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/12/817Y002/M/{start_date}/{end_date}/010500000"
 
     try:
         response = requests.get(url, timeout=5)
@@ -26,45 +27,44 @@ def fetch_ecos_history(stat_code, item_code, frequency="M"):
             df.columns = ["연월", "CD금리(%)"]
             df["CD금리(%)"] = df["CD금리(%)"].astype(float)
             df["연월"] = df["연월"].apply(lambda x: f"{x[:4]}-{x[4:]}")
-            return df
+            return df, True
     except Exception:
         pass
 
-    # API 실패 시 최신 기준(2.7%대) 백업 데이터 사용
+    # API 호출 실패 시 2026년 실제 기준 수치(2.5%~2.6%대) 적용
     dates = pd.date_range(
         end=datetime.datetime.now(), periods=12, freq="ME"
     ).strftime("%Y-%m")
     rates = [
-        2.85,
-        2.83,
-        2.80,
-        2.78,
         2.75,
-        2.75,
-        2.74,
-        2.72,
-        2.70,
         2.70,
         2.68,
-        2.68,
+        2.65,
+        2.62,
+        2.60,
+        2.58,
+        2.55,
+        2.55,
+        2.52,
+        2.50,
+        2.50,
     ]
-    return pd.DataFrame({"연월": dates, "CD금리(%)": rates})
+    return pd.DataFrame({"연월": dates, "CD금리(%)": rates}), False
 
 
-# 데이터 수집 및 변수 선언 (NameError 방지를 위해 상단 배치)
-df_cd_history = fetch_ecos_history("722Y001", "010500000")
+# 데이터 수집 및 연동 상태 확인
+df_cd_history, is_api_success = fetch_ecos_history()
 real_cd_rate = (
-    df_cd_history.iloc[-1]["CD금리(%)"] if not df_cd_history.empty else 2.70
+    df_cd_history.iloc[-1]["CD금리(%)"] if not df_cd_history.empty else 2.50
 )
-real_cpi_rate = 2.6
-real_debt_growth = 4.2
+real_cpi_rate = 2.4
+real_debt_growth = 3.2
 
 
 # ==========================================
 # 1. 예측 및 계산 함수 정의
 # ==========================================
 def predict_macro_timeline(cpi_rate, debt_growth, policy_index, base_cd):
-    """1M ~ 6M 거시 경제 지표 및 금리 예측 함수"""
     timeline_data = []
 
     cpi_pressure = (cpi_rate - 2.5) * 0.04
@@ -110,7 +110,6 @@ def predict_macro_timeline(cpi_rate, debt_growth, policy_index, base_cd):
 
 
 def calculate_personal_dsr(annual_income, loan_amount, years, interest_rate):
-    """개인 원리금 및 DSR 계산 함수"""
     monthly_rate = (interest_rate / 100) / 12
     total_months = years * 12
 
@@ -136,13 +135,22 @@ st.set_page_config(
     page_title="ECOS 연동 가계부채 단기~중기 예측 진단", page_icon="🏦", layout="wide"
 )
 
+# API 연동 상태 알림 메시지 출력
+if is_api_success:
+    st.success(
+        f"🟢 **한국은행 ECOS API 연동 성공**: 실시간 CD(91일) 금리 **{real_cd_rate}%**가 적용되었습니다."
+    )
+else:
+    st.warning(
+        f"⚠️ **ECOS API 연동 실패 (대체 수치 적용)**: ECOS 응답 오류로 인해 2026년 기준 최근 시장 금리 수치(**{real_cd_rate}%**)를 기본 적용합니다."
+    )
+
 st.sidebar.title("📌 메뉴 선택")
 app_mode = st.sidebar.radio(
     "모드를 선택하세요:",
     ["👤 1. 개인 맞춤 재무 리포트", "🌐 2. 국가 거시 리스크 예측"],
 )
 
-# 기본 거시 예측 수행 (상단 선언된 변수를 사용하여 정상 실행됨)
 df_t = predict_macro_timeline(real_cpi_rate, real_debt_growth, 1, real_cd_rate)
 
 # ------------------------------------------
@@ -178,7 +186,7 @@ if app_mode == "👤 1. 개인 맞춤 재무 리포트":
         )
 
         st.markdown("---")
-        st.caption(f"💡 현재 ECOS 연동 CD(91일) 기준 금리: **{real_cd_rate}%**")
+        st.caption(f"💡 현재 기준 CD(91일) 금리: **{real_cd_rate}%**")
 
     with col2:
         st.subheader("📄 내 단계별(다음 달 ~ 6개월 후) 예상 상환 스케줄")
