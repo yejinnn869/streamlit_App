@@ -20,7 +20,7 @@ def fetch_ecos_data():
     try:
         api_key = st.secrets["ECOS_API_KEY"]
     except KeyError:
-        st.error("Streamlit Secrets에 'YOUTUBE_API_KEY'가 설정되지 않았습니다.")
+        st.error("Streamlit Secrets에 'EOCS_API_KEY'가 설정되지 않았습니다.")
         st.stop()
      
     # 2. 검색 기간 설정 
