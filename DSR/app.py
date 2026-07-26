@@ -45,8 +45,8 @@ df_cd_history = fetch_ecos_history("722Y001", "010500000")
 real_cd_rate = df_cd_history.iloc[-1]["CD금리(%)"] if not df_cd_history.empty else 3.55
 
 # 소비자물가 및 가계부채 백업/API 수치
-real_cpi_rate = 2.6
-real_debt_growth = 4.2
+real_cpi_rate = 0.1
+real_debt_growth = 0.5
 
 
 # ==========================================
