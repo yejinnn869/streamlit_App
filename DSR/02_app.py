@@ -17,23 +17,80 @@ from datetime import datetime, timedelta
 import requests
 import streamlit as st
 
+from datetime import datetime, timedelta
+import requests
+import streamlit as st
+
 def fetch_ecos_data():
-    """한국은행 ECOS API 실시간 데이터 호출 및 디버깅"""
+    """한국은행 ECOS StatisticSearch (통계 세부조건 검색) API 정식 규격 적용"""
     
-    # 1. API 키 불러오기
+    # 1. API 키 설정
     try:
         api_key = st.secrets["ECOS_API_KEY"]
     except Exception:
-        st.error("연결안됨")
-        st.stop()
+        api_key = "여기에_실제_발급받은_API키_입력"
     
-    # 2. 검색 기간 설정 (여유있게 최근 6개월로 설정)
+    # 2. 검색 기간 설정 (최근 6개월)
     today = datetime.today()
     start_date = (today - timedelta(days=180)).strftime("%Y%m")
     end_date = today.strftime("%Y%m")
     
-    # https:// 로 변경
-    base_url = "https://ecos.bok.or.kr/api/StatisticSearch"
+    # -------------------------------------------------------------
+    # (1) CD 금리 (91일물) 실시간 수치 조회
+    # ServiceName: StatisticSearch
+    # AuthKey: api_key
+    # Type: json
+    # Language: kr
+    # StartNo: 1 / EndNo: 10
+    # StatCode: 060Y001 (시장금리 월별)
+    # Cycle: M (월별)
+    # StartDate: YYYYMM / EndDate: YYYYMM
+    # ItemCode: 010502000 (CD 91일)
+    # -------------------------------------------------------------
+    cd_rate = 3.65  # API 실패 시 기본값
+    url_cd = f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/10/060Y001/M/{start_date}/{end_date}/010502000"
+    
+    try:
+        res_cd = requests.get(url_cd, timeout=10).json()
+        
+        # 정상적으로 StatisticSearch 응답이 온 경우
+        if "StatisticSearch" in res_cd:
+            rows = res_cd["StatisticSearch"]["row"]
+            # 가장 최근 달의 실제 수치(DATA_VALUE) 파싱
+            cd_rate = float(rows[-1]["DATA_VALUE"])
+        elif "RESULT" in res_cd:
+            st.error(f"CD 금리 API 오류 [{res_cd['RESULT']['CODE']}]: {res_cd['RESULT']['MESSAGE']}")
+    except Exception as e:
+        st.warning(f"CD 금리 통신 문제: {e}")
+
+    # -------------------------------------------------------------
+    # (2) 은행 가계대출 연체율 실시간 수치 조회
+    # StatCode: 098Y001 (예금취급기관 대출금 연체율)
+    # ItemCode: 01020000 (가계대출)
+    # -------------------------------------------------------------
+    delinq_rate = 0.38
+    url_delinq = f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/10/098Y001/M/{start_date}/{end_date}/01020000"
+    
+    try:
+        res_delinq = requests.get(url_delinq, timeout=10).json()
+        
+        if "StatisticSearch" in res_delinq:
+            rows = res_delinq["StatisticSearch"]["row"]
+            delinq_rate = float(rows[-1]["DATA_VALUE"])
+        elif "RESULT" in res_delinq:
+            st.error(f"연체율 API 오류 [{res_delinq['RESULT']['CODE']}]: {res_delinq['RESULT']['MESSAGE']}")
+    except Exception as e:
+        st.warning(f"연체율 통신 문제: {e}")
+
+    # (3) 국가 DSR 추정 기본값
+    nat_dsr = 40.5 
+
+    return {
+        "current_cd_rate": cd_rate,
+        "current_nat_dsr": nat_dsr,
+        "current_nat_delinq": delinq_rate
+    }
+
     
     # -------------------------------------------------------------
     # (1) CD 금리 (91일물) 실시간 조회
