@@ -1,7 +1,7 @@
 import streamlit as st
 
 # ECOS API Key
-ECOS_API_KEY = st.secrets.get("ECOS_API_KEY")
+ECOS_API_KEY = st.secrets.get("ECOS_API_KEY", " ")
 
 # ECOS 기본 URL
 ECOS_BASE_URL = "https://ecos.bok.or.kr/api"
