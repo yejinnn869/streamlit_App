@@ -15,7 +15,7 @@ def fetch_ecos_history(stat_code, item_code, frequency="M"):
     if ECOS_API_KEY == "31YTTV1LTR4TIOTYDW8B":
         # API 키 미입력 시 백업용 최근 1년 시뮬레이션 데이터 생성
         dates = pd.date_range(end=datetime.datetime.now(), periods=12, freq='ME').strftime("%Y-%m")
-        rates = [3.85, 3.83, 3.78, 3.75, 3.70, 2.810, 2.730, 2.810, 2.820, 2.810, 2.890, 2.920]
+        rates = [3.85, 3.83, 3.78, 2.55, 1.80, 2.81, 2.73, 2.81, 2.82, 2.81, 2.89, 2.92]
         return pd.DataFrame({"연월": dates, "CD금리(%)": rates})
 
     end_date = datetime.datetime.now().strftime("%Y%m")
