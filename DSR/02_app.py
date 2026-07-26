@@ -4,6 +4,7 @@ import numpy as np
 import requests
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression  # 머신러닝 라이브러리 추가
+from datetime import datetime, timedelta
 
 # 페이지 설정
 st.set_page_config(page_title="금융 리스크 예측 & 관리 앱", layout="wide")
@@ -11,15 +12,63 @@ st.set_page_config(page_title="금융 리스크 예측 & 관리 앱", layout="wi
 # ==========================================
 # 1. ECOS API 연동 (데이터 호출 함수)
 # ==========================================
-ECOS_API_KEY = st.secrets["ECOS_API_KEY"] 
 
 def fetch_ecos_data():
-    url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/10/060Y001/MM/202301/202312/0101000"
-    response = requests.get(url).json()
+    """한국은행 ECOS API에서 실시간 거시경제 지표를 실제로 호출하여 추출하는 함수"""
     
-    # 임시 최신 거시경제 데이터 (CD 91일물, 가계대출 연체율, 국가 평균 DSR 추정치)
-    return {response
+    # 1. API 키 설정 
+    try:
+        api_key = st.secrets["ECOS_API_KEY"]
+     
+    # 2. 검색 기간 설정 
+    # 통계 발표 지연(약 1~2개월)을 고려해 오늘 날짜 기준 최근 3개월 치를 검색 범위로 잡습니다.
+    today = datetime.today()
+    start_date = (today - timedelta(days=90)).strftime("%Y%m")
+    end_date = today.strftime("%Y%m")
     
+    base_url = "http://ecos.bok.or.kr/api/StatisticSearch"
+    
+    # -------------------------------------------------------------
+    # (1) CD 금리 (91일물) 실시간 조회
+    # 통계표: 060Y001(시장금리), 항목코드: 010502000(CD91일)
+    # -------------------------------------------------------------
+    cd_rate = 3.65  # API 통신 실패 시 사용할 기본값
+    url_cd = f"{base_url}/{api_key}/json/kr/1/5/060Y001/MM/{start_date}/{end_date}/010502000"
+    
+    try:
+        res_cd = requests.get(url_cd).json()
+        # 한국은행 JSON 응답 구조에서 데이터 값만 파싱 (검색된 리스트 중 가장 최근[-1] 값)
+        if "StatisticSearch" in res_cd:
+            cd_rate = float(res_cd["StatisticSearch"]["row"][-1]["DATA_VALUE"])
+    except Exception as e:
+        st.warning(f"CD 금리 실시간 데이터를 불러오지 못했습니다: {e}")
+
+    # -------------------------------------------------------------
+    # (2) 은행 대출 연체율 (가계대출) 실시간 조회
+    # 통계표: 098Y001(예금취급기관 대출금연체율), 항목코드: 01020000(가계대출)
+    # -------------------------------------------------------------
+    delinq_rate = 0.38
+    url_delinq = f"{base_url}/{api_key}/json/kr/1/5/098Y001/MM/{start_date}/{end_date}/01020000"
+    
+    try:
+        res_delinq = requests.get(url_delinq).json()
+        if "StatisticSearch" in res_delinq:
+            delinq_rate = float(res_delinq["StatisticSearch"]["row"][-1]["DATA_VALUE"])
+    except Exception as e:
+        st.warning(f"연체율 실시간 데이터를 불러오지 못했습니다: {e}")
+
+    # -------------------------------------------------------------
+    # (3) 국가 평균 DSR
+    # -------------------------------------------------------------
+    # ※ 주의: DSR은 한국은행 ECOS에서 월별 API 단일 지표(통계코드 1개)로 딱 떨어지게 제공하지 않습니다.
+    # 주로 분기별 금융안정보고서로 발표되거나 가계부채 데이터를 가공해야 하므로 
+    # 현재는 고정값을 사용하거나, 나중에 가계부채 총액 API를 불러와 직접 계산식을 넣어야 합니다.
+    nat_dsr = 40.5 
+
+    return {
+        "current_cd_rate": cd_rate,
+        "current_nat_dsr": nat_dsr,
+        "current_nat_delinq": delinq_rate
     }
 
 
