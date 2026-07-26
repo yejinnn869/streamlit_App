@@ -54,3 +54,116 @@ def call_ecos(stat_code, item_code, start, end, cycle="M"):
     df = pd.DataFrame(rows)
 
     return df
+
+
+#날짜 변환
+def preprocess(df):
+
+    df = df.copy()
+
+    df["TIME"] = pd.to_datetime(df["TIME"])
+
+    df["DATA_VALUE"] = pd.to_numeric(
+        df["DATA_VALUE"],
+        errors="coerce"
+    )
+
+    df = df.sort_values("TIME")
+
+    df = df.reset_index(drop=True)
+
+    return df
+
+#최신 데이터 날짜
+def latest_date(df):
+
+    if len(df) == 0:
+        return None
+
+    return df["TIME"].max()
+
+#특정 컬럼명 변경
+def rename_column(df, new_name):
+
+    df = df.rename(
+        columns={
+            "DATA_VALUE": new_name
+        }
+    )
+
+    return df[
+        [
+            "TIME",
+            new_name
+        ]
+    ]
+
+#여러 데이터 병합
+def merge_dataframes(dataframes):
+
+    merged = dataframes[0]
+
+    for df in dataframes[1:]:
+
+        merged = pd.merge(
+
+            merged,
+
+            df,
+
+            on="TIME",
+
+            how="inner"
+
+        )
+
+    return merged
+
+#결측치 제거
+def clean(df):
+
+    df = df.dropna()
+
+    df = df.reset_index(drop=True)
+
+    return df
+
+#ecos 연결 테스트
+def test_connection():
+
+    try:
+
+        url = (
+            f"{ECOS_BASE_URL}/StatisticTableList/"
+            f"{ECOS_API_KEY}/json/kr/1/5"
+        )
+
+        response = requests.get(url, timeout=10)
+
+        return response.status_code == 200
+
+    except Exception:
+
+        return False
+
+#api연결 상태
+def api_status():
+
+    if test_connection():
+
+        return "🟢 정상"
+
+    return "🔴 연결 실패"
+
+#데이터 정보
+def dataset_info(df):
+
+    return {
+
+        "rows": len(df),
+
+        "start": df["TIME"].min(),
+
+        "end": df["TIME"].max()
+
+    }
