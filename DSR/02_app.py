@@ -12,7 +12,7 @@ st.set_page_config(page_title="금융 리스크 예측 & 관리 앱", layout="wi
 # 1. ECOS API 연동 (데이터 호출 함수)
 # ==========================================
 # 주의: 실제 사용 시 본인의 ECOS API 키를 Streamlit Secrets에 저장해야 합니다.
-ECOS_API_KEY = "YOUR_ECOS_API_KEY" 
+ECOS_API_KEY = st.secrets["ECOS_API_KEY"]
 
 def fetch_ecos_data():
     """
@@ -20,9 +20,9 @@ def fetch_ecos_data():
     (현재는 앱이 바로 작동하도록 최신 평균값을 Mock Data로 구성했습니다. 
     실제 배포 시 requests.get() 주석을 해제하고 연동하세요.)
     """
-    # 실제 API 호출 코드 예시:
-    # url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/10/060Y001/MM/202301/202312/0101000"
-    # response = requests.get(url).json()
+    #실제 API 호출 코드 예시:
+    url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/10/060Y001/MM/202301/202312/0101000"
+    response = requests.get(url).json()
     
     # 임시 최신 거시경제 데이터 (CD 91일물, 가계대출 연체율, 국가 평균 DSR 추정치)
     return {
