@@ -19,6 +19,9 @@ def fetch_ecos_data():
     # 1. API 키 설정 
     try:
         api_key = st.secrets["ECOS_API_KEY"]
+    except KeyError:
+    st.error("Streamlit Secrets에 'YOUTUBE_API_KEY'가 설정되지 않았습니다.")
+    st.stop()
      
     # 2. 검색 기간 설정 
     # 통계 발표 지연(약 1~2개월)을 고려해 오늘 날짜 기준 최근 3개월 치를 검색 범위로 잡습니다.
