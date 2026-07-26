@@ -11,7 +11,7 @@ st.set_page_config(page_title="금융 리스크 예측 & 관리 앱", layout="wi
 # ==========================================
 # 1. ECOS API 연동 (데이터 호출 함수)
 # ==========================================
-ECOS_API_KEY = st.secret["ECOS_API_KEY"] 
+ECOS_API_KEY = st.secrets["ECOS_API_KEY"] 
 
 def fetch_ecos_data():
     url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/10/060Y001/MM/202301/202312/0101000"
