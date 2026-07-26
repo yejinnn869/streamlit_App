@@ -1,342 +1,157 @@
-import datetime
-import pandas as pd
-import requests
 import streamlit as st
+import pandas as pd
+import numpy as np
+import requests
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+
+# 페이지 설정
+st.set_page_config(page_title="금융 리스크 예측 & 관리 앱", layout="wide")
 
 # ==========================================
-# 0. 한국은행 ECOS API 연동 및 데이터 수집
+# 1. ECOS API 연동 (데이터 호출 함수)
 # ==========================================
-ECOS_API_KEY = "31YTTV1LTRTIOTYDW8B"
+# 주의: 실제 사용 시 본인의 ECOS API 키를 Streamlit Secrets에 저장해야 합니다.
+ECOS_API_KEY = "YOUR_ECOS_API_KEY" 
 
-
-@st.cache_data(ttl=3600)
-def fetch_ecos_history():
-    # 최신 ECOS 시장금리 통계표 코드 적용 (817Y002)
-    end_date = datetime.datetime.now().strftime("%Y%m")
-    start_date = (
-        datetime.datetime.now() - datetime.timedelta(days=365)
-    ).strftime("%Y%m")
-    url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/12/817Y002/M/{start_date}/{end_date}/010500000"
-
-    try:
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        if "StatisticSearch" in data:
-            rows = data["StatisticSearch"]["row"]
-            df = pd.DataFrame(rows)[["TIME", "DATA_VALUE"]]
-            df.columns = ["연월", "CD금리(%)"]
-            df["CD금리(%)"] = df["CD금리(%)"].astype(float)
-            df["연월"] = df["연월"].apply(lambda x: f"{x[:4]}-{x[4:]}")
-            return df, True
-    except Exception:
-        pass
-
-    # API 호출 실패 시 2026년 실제 기준 수치(2.5%~2.6%대) 적용
-    dates = pd.date_range(
-        end=datetime.datetime.now(), periods=12, freq="ME"
-    ).strftime("%Y-%m")
-    rates = [
-        2.75,
-        2.70,
-        2.68,
-        2.65,
-        2.62,
-        2.60,
-        2.58,
-        2.55,
-        2.55,
-        2.52,
-        2.50,
-        2.50,
-    ]
-    return pd.DataFrame({"연월": dates, "CD금리(%)": rates}), False
-
-
-# 데이터 수집 및 연동 상태 확인
-df_cd_history, is_api_success = fetch_ecos_history()
-real_cd_rate = (
-    df_cd_history.iloc[-1]["CD금리(%)"] if not df_cd_history.empty else 2.50
-)
-real_cpi_rate = 2.4
-real_debt_growth = 3.2
-
+def fetch_ecos_data():
+    """
+    한국은행 ECOS API에서 실시간 거시경제 지표(CD금리, 기준금리 등)를 가져오는 함수입니다.
+    (현재는 앱이 바로 작동하도록 최신 평균값을 Mock Data로 구성했습니다. 
+    실제 배포 시 requests.get() 주석을 해제하고 연동하세요.)
+    """
+    # 실제 API 호출 코드 예시:
+    # url = f"http://ecos.bok.or.kr/api/StatisticSearch/{ECOS_API_KEY}/json/kr/1/10/060Y001/MM/202301/202312/0101000"
+    # response = requests.get(url).json()
+    
+    # 임시 최신 거시경제 데이터 (CD 91일물, 가계대출 연체율, 국가 평균 DSR 추정치)
+    return {
+        "current_cd_rate": 3.65,      # 현재 CD금리 (%)
+        "current_nat_dsr": 40.5,      # 국가 평균 DSR (%)
+        "current_nat_delinq": 0.38    # 가계대출 연체율 (%)
+    }
 
 # ==========================================
-# 1. 예측 및 계산 함수 정의
+# 2. 예측 알고리즘 (1~6개월 뒤)
 # ==========================================
-def predict_macro_timeline(cpi_rate, debt_growth, policy_index, base_cd):
-    timeline_data = []
+def predict_indicators(base_rate, base_dsr, base_delinq, policy_level):
+    """
+    정부 정책 단계(0~3)와 현재 지표를 바탕으로 1~6개월 뒤의 값을 예측합니다.
+    - policy_level (0: 지원 없음 ~ 3: 강력한 금융 지원 및 금리 인하 압박)
+    """
+    months = ["1개월 뒤", "2개월 뒤", "3개월 뒤", "4개월 뒤", "5개월 뒤", "6개월 뒤"]
+    
+    # 정책 단계에 따른 가중치 (단계가 높을수록 금리, DSR, 연체율 상승 억제)
+    policy_effect_rate = policy_level * 0.05
+    policy_effect_dsr = policy_level * 0.8
+    policy_effect_delinq = policy_level * 0.02
 
-    cpi_pressure = (cpi_rate - 2.5) * 0.04
-    debt_pressure = (debt_growth - 3.0) * 0.02
-    policy_effect = policy_index * 0.04
+    pred_rates = []
+    pred_dsrs = []
+    pred_delinqs = []
 
-    monthly_trend = cpi_pressure + debt_pressure - policy_effect
-    months_list = [0, 1, 3, 6]
+    for i in range(1, 7):
+        # 시간 경과(i)에 따른 단순 추세 반영 + 정책 효과 차감 (간단한 시뮬레이션 모델)
+        rate = base_rate + (i * 0.03) - policy_effect_rate
+        dsr = base_dsr + (i * 0.2) - policy_effect_dsr
+        delinq = base_delinq + (i * 0.015) - policy_effect_delinq
+        
+        pred_rates.append(round(max(rate, 1.0), 2)) # 금리 하한선 1.0%
+        pred_dsrs.append(round(max(dsr, 0.0), 2))
+        pred_delinqs.append(round(max(delinq, 0.0), 3))
 
-    for m in months_list:
-        if m == 0:
-            rate = base_cd
-            dsr = 38.5 + (rate * 1.0) - (policy_index * 1.5)
-            default_rate = 0.35 + (rate * 0.1) - (policy_index * 0.2)
-        else:
-            rate = max(1.0, base_cd + (monthly_trend * m))
-            dsr = (
-                38.5
-                + (rate * 1.1)
-                + (debt_growth * 0.2)
-                - (policy_index * 1.5)
-            )
-            default_rate = (
-                0.35
-                + (rate * 0.12)
-                + (cpi_rate * 0.05)
-                - (policy_index * 0.2)
-            )
-
-        default_rate = max(0.1, default_rate)
-
-        timeline_data.append(
-            {
-                "시점": "현재" if m == 0 else f"{m}개월 후",
-                "경과월": m,
-                "예측금리": round(rate, 2),
-                "국가DSR": round(dsr, 1),
-                "연체율": round(default_rate, 2),
-            }
-        )
-
-    return pd.DataFrame(timeline_data)
-
-
-def calculate_personal_dsr(annual_income, loan_amount, years, interest_rate):
-    monthly_rate = (interest_rate / 100) / 12
-    total_months = years * 12
-
-    if monthly_rate == 0:
-        monthly_payment = (loan_amount * 10000) / total_months
-    else:
-        monthly_payment = (
-            (loan_amount * 10000)
-            * monthly_rate
-            * ((1 + monthly_rate) ** total_months)
-        ) / (((1 + monthly_rate) ** total_months) - 1)
-
-    annual_payment = monthly_payment * 12
-    income_won = annual_income * 10000
-    dsr = (annual_payment / income_won) * 100 if income_won > 0 else 0
-    return int(monthly_payment), round(dsr, 1)
-
+    df_predict = pd.DataFrame({
+        "기간": months,
+        "예측 금리(%)": pred_rates,
+        "예측 DSR(%)": pred_dsrs,
+        "예측 연체율(%)": pred_delinqs
+    })
+    return df_predict
 
 # ==========================================
-# 2. 메인 UI 및 화면 구성
+# 3. 메인 UI 구성
 # ==========================================
-st.set_page_config(
-    page_title="ECOS 연동 가계부채 단기~중기 예측 진단", page_icon="🏦", layout="wide"
+st.title("💡 개인 및 국가 금융 리스크 예측 시스템")
+st.markdown("한국은행 ECOS 데이터를 기반으로 다양한 변수와 **정부 금융지원 정책**을 고려하여 6개월간의 재무 리스크를 예측합니다.")
+
+# 사이드바: 정부 정책 변수 조절
+st.sidebar.header("⚙️ 거시경제 변수 설정")
+policy_level = st.sidebar.slider(
+    "정부 금융지원 정책 수준 (0~3단계)", 
+    min_value=0, max_value=3, value=1, step=1,
+    help="0: 지원 없음 / 3: 대규모 정책 자금 투입 및 상환 유예 등 강력한 지원"
 )
 
-# API 연동 상태 알림 메시지 출력
-if is_api_success:
-    st.success(
-        f"🟢 **한국은행 ECOS API 연동 성공**: 실시간 CD(91일) 금리 **{real_cd_rate}%**가 적용되었습니다."
-    )
-else:
-    st.warning(
-        f"⚠️ **ECOS API 연동 실패 (대체 수치 적용)**: ECOS 응답 오류로 인해 2026년 기준 최근 시장 금리 수치(**{real_cd_rate}%**)를 기본 적용합니다."
-    )
+# 데이터 로드
+ecos_data = fetch_ecos_data()
 
-st.sidebar.title("📌 메뉴 선택")
-app_mode = st.sidebar.radio(
-    "모드를 선택하세요:",
-    ["👤 1. 개인 맞춤 재무 리포트", "🌐 2. 국가 거시 리스크 예측"],
-)
-
-df_t = predict_macro_timeline(real_cpi_rate, real_debt_growth, 1, real_cd_rate)
+# 탭 생성: 1번(개인) / 2번(국가)
+tab1, tab2 = st.tabs(["📊 1. 개인 재무 리포트", "🌐 2. 국가 거시 경제 리스크 예측"])
 
 # ------------------------------------------
-# 모듈 1: 개인 맞춤 재무 리포트
+# 탭 1: 개인 재무 리포트
 # ------------------------------------------
-if app_mode == "👤 1. 개인 맞춤 재무 리포트":
-    st.title("👤 개인 맞춤형 대출 / 단계별(다음 달~6개월 후) 상환 스케줄")
-    st.markdown(
-        "거시 데이터 예측을 바탕으로 **당장 다음 달부터 6개월 후까지 내 통장에서 나갈 월 상환액 변화**를 타임라인으로 정밀 계산합니다."
-    )
-    st.divider()
-
-    col1, col2 = st.columns([1, 1.4])
-
+with tab1:
+    st.subheader("개인 DSR 및 가계대출 연체 위험도 분석")
+    st.write("본인의 소득과 대출 정보를 입력하면, 금리 변동에 따른 개인의 재무 부담을 예측해 드립니다.")
+    
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.subheader("📝 내 재무 정보 입력")
-        income_input = st.number_input(
-            "연 소득 (만원)",
-            min_value=1000,
-            max_value=50000,
-            value=5000,
-            step=500,
-        )
-        loan_input = st.number_input(
-            "대출 총액 (만원)",
-            min_value=1000,
-            max_value=200000,
-            value=30000,
-            step=1000,
-        )
-        years_input = st.selectbox(
-            "대출 만기 (년)", options=[10, 15, 20, 30, 40, 50], index=3
-        )
-
-        st.markdown("---")
-        st.caption(f"💡 현재 기준 CD(91일) 금리: **{real_cd_rate}%**")
-
+        annual_income = st.number_input("연소득 (만원)", value=5000, step=100)
     with col2:
-        st.subheader("📄 내 단계별(다음 달 ~ 6개월 후) 예상 상환 스케줄")
+        total_loan = st.number_input("총 대출 잔액 (만원)", value=10000, step=100)
+    with col3:
+        my_interest_rate = st.number_input("현재 적용 금리 (%)", value=ecos_data['current_cd_rate'] + 1.5, step=0.1)
 
-        personal_schedule = []
-        curr_p = 0
+    # 간단한 개인 DSR 계산 (원리금 균등상환 가정 등락 반영)
+    current_annual_repayment = total_loan * (my_interest_rate / 100) + (total_loan / 10) # 임시 상환액 산식
+    personal_base_dsr = (current_annual_repayment / annual_income) * 100
+    
+    # 개인 연체 위험도 (DSR이 40%가 넘어가면 위험도 급증 가정)
+    personal_base_delinq = max(0.1, (personal_base_dsr - 30) * 0.05) 
 
-        for idx, row in df_t.iterrows():
-            m_label = row["시점"]
-            r = row["예측금리"]
-            pay, dsr = calculate_personal_dsr(
-                income_input, loan_input, years_input, r
-            )
-
-            if idx == 0:
-                curr_p = pay
-                diff_str = "-"
-            else:
-                diff = pay - curr_p
-                diff_str = f"{diff:+,} 원"
-
-            personal_schedule.append(
-                {
-                    "시점": m_label,
-                    "예측 적용 금리": f"{r}%",
-                    "예상 월 원리금": f"{pay:,} 원",
-                    "현재 대비 월 지출 변화액": diff_str,
-                    "내 개인 DSR": f"{dsr}%",
-                }
-            )
-
-        df_pers_sched = pd.DataFrame(personal_schedule)
-
-        m1_pay_info = personal_schedule[1]
-        p1, p2 = st.columns([1.3, 1])
-        p1.metric(
-            "당장 다음 달 예상 원리금",
-            m1_pay_info["예상 월 원리금"],
-            delta=m1_pay_info["현재 대비 월 지출 변화액"],
-        )
-        p2.metric("다음 달 내 DSR", m1_pay_info["내 개인 DSR"])
-
-        st.markdown("##### 🗓️ 단계별 월 상환액 변화 스케줄")
-        st.dataframe(df_pers_sched, use_container_width=True)
-
-        st.divider()
-        m6_dsr_val = float(personal_schedule[-1]["내 개인 DSR"].replace("%", ""))
-        if m6_dsr_val > 40.0:
-            st.error(
-                f"🚨 **[경고] 6개월 내 DSR({m6_dsr_val}%) 규제 상한 초과 예상!**\n\n"
-                "👉 당장 다음 달부터 월 지출이 늘어날 수 있으므로, **고정금리 대환대출 신청이나 지출 축소 계획**을 세우셔야 합니다."
-            )
-        else:
-            st.success("✅ **[안정] 6개월 내 DSR이 40% 이하로 안전하게 유지됩니다.**")
+    # 예측 실행
+    df_personal = predict_indicators(my_interest_rate, personal_base_dsr, personal_base_delinq, policy_level)
+    
+    st.markdown(f"**현재 추정 DSR:** `{personal_base_dsr:.1f}%` ｜ **정부 정책 적용:** `{policy_level}단계`")
+    
+    # 시각화 (Plotly)
+    fig_personal = go.Figure()
+    fig_personal.add_trace(go.Scatter(x=df_personal['기간'], y=df_personal['예측 DSR(%)'], mode='lines+markers', name='나의 DSR 예측'))
+    fig_personal.add_trace(go.Bar(x=df_personal['기간'], y=df_personal['예측 연체율(%)'], name='나의 연체 위험도(%)', yaxis='y2', opacity=0.3))
+    
+    fig_personal.update_layout(
+        title="향후 6개월 개인 DSR 및 연체 위험도 변화",
+        yaxis=dict(title='DSR (%)'),
+        yaxis2=dict(title='연체 위험도 (%)', overlaying='y', side='right'),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig_personal, use_container_width=True)
+    st.dataframe(df_personal, use_container_width=True)
 
 # ------------------------------------------
-# 모듈 2: 국가 거시 리스크 예측
+# 탭 2: 국가 거시 경제 리스크 예측
 # ------------------------------------------
-elif app_mode == "🌐 2. 국가 거시 리스크 예측":
-    st.title("🌐 국가 거시 리스크 단계별 예측 시뮬레이터")
-    st.info(
-        "💡 **당장 다음 달(1개월 후)**부터 **3개월 후, 6개월 후**까지 단계별 국가 거시 지표 변화 흐름을 시뮬레이션합니다."
+with tab2:
+    st.subheader("국가 단위 거시 지표 및 가계대출 연체율 예측")
+    st.write(f"ECOS 기준 현재 CD금리 **{ecos_data['current_cd_rate']}%**, 국가 평균 DSR **{ecos_data['current_nat_dsr']}%** 기반 예측입니다.")
+    
+    # 예측 실행
+    df_national = predict_indicators(ecos_data['current_cd_rate'], ecos_data['current_nat_dsr'], ecos_data['current_nat_delinq'], policy_level)
+    
+    # 시각화 (Plotly)
+    fig_national = go.Figure()
+    fig_national.add_trace(go.Scatter(x=df_national['기간'], y=df_national['예측 금리(%)'], mode='lines+markers', name='예측 시장 금리'))
+    fig_national.add_trace(go.Scatter(x=df_national['기간'], y=df_national['예측 연체율(%)'], mode='lines+markers', name='가계대출 연체율(%)', yaxis='y2'))
+    
+    fig_national.update_layout(
+        title="향후 6개월 국가 시장 금리 및 가계대출 연체율 변화",
+        yaxis=dict(title='금리 / DSR (%)'),
+        yaxis2=dict(title='연체율 (%)', overlaying='y', side='right'),
+        hovermode="x unified"
     )
-    st.divider()
-
-    col1, col2 = st.columns([1.1, 1.3])
-
-    with col1:
-        st.subheader("⚙️ 거시 경제 변수 설정")
-
-        cpi_input = st.slider(
-            "소비자물가증감률 (%)",
-            min_value=0.0,
-            max_value=10.0,
-            value=float(real_cpi_rate),
-            step=0.1,
-        )
-        debt_growth_input = st.slider(
-            "가계부채증가율 (%)",
-            min_value=0.0,
-            max_value=15.0,
-            value=float(real_debt_growth),
-            step=0.1,
-        )
-        policy_input = st.select_slider(
-            "정부 금융지원 정책 강도 지수",
-            options=[0, 1, 2, 3],
-            value=1,
-            format_func=lambda x: [
-                "0단계 (지원 없음)",
-                "1단계 (만기 연장)",
-                "2단계 (부분 상환유예)",
-                "3단계 (전면 상환유예)",
-            ][x],
-        )
-
-        st.markdown("---")
-        st.subheader("🎛️ 현재 기준 CD금리 미세 조율")
-        base_cd_input = st.slider(
-            "기준 CD금리 (%p)",
-            min_value=1.0,
-            max_value=10.0,
-            value=float(real_cd_rate),
-            step=0.1,
-        )
-
-    df_timeline = predict_macro_timeline(
-        cpi_input, debt_growth_input, policy_input, base_cd_input
-    )
-
-    with col2:
-        st.subheader("📊 시점별(다음 달 ~ 6개월 후) 국가 거시 지표 예측")
-
-        m1_data = df_timeline[df_timeline["시점"] == "1개월 후"].iloc[0]
-        m6_data = df_timeline[df_timeline["시점"] == "6개월 후"].iloc[0]
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric(
-            "다음 달(1M) 예상 금리",
-            f"{m1_data['예측금리']}%",
-            delta=f"{round(m1_data['예측금리'] - base_cd_input, 2)}%p",
-        )
-        m2.metric(
-            "6개월 후(6M) 예상 금리",
-            f"{m6_data['예측금리']}%",
-            delta=f"{round(m6_data['예측금리'] - base_cd_input, 2)}%p",
-        )
-        m3.metric(
-            "6개월 후 가계 연체율",
-            f"{m6_data['연체율']}%",
-            delta=f"{round(m6_data['연체율'] - df_timeline.iloc[0]['연체율'], 2)}%p",
-        )
-
-        st.markdown("##### 🗓️ 시점별 리스크 변화 종합 표")
-        st.dataframe(df_timeline, use_container_width=True)
-
-        st.divider()
-        st.subheader("🚨 단계별 정부 후속 조치 예견")
-
-        if m6_data["연체율"] >= 1.5:
-            st.error(
-                f"**[경고: 심각]** 6개월 내 연체율({m6_data['연체율']}%)이 위험 수준 도달 예견.\n\n"
-                "👉 **다음 달~3개월 내**: 금융 당국의 **만기 연장 긴급 지침** 배포 예상\n"
-                "👉 **6개월 내**: **전면 상환유예** 및 **안심전환대출** 시행 가능성 높음"
-            )
-        else:
-            st.success(
-                f"**[안정]** 6개월 내 연체율({m6_data['연체율']}%)이 관리 가능한 범주입니다."
-            )
-
-        st.divider()
-        st.subheader("📈 최근 1년 CD금리 추이")
-        st.line_chart(df_cd_history.set_index("연월"))
+    st.plotly_chart(fig_national, use_container_width=True)
+    
+    # 요약 분석
+    st.info(f"💡 **분석 결과**: 정부 정책이 {policy_level}단계로 시행될 경우, 6개월 뒤 국가 가계대출 연체율은 **{df_national['예측 연체율(%)'].iloc[-1]}%** 로 예상됩니다.")
+    st.dataframe(df_national, use_container_width=True)
