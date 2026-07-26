@@ -138,3 +138,43 @@ def test_api():
 
     except:
         return False
+
+from ecos_codes import *
+
+
+def load_all_data(start_date, end_date):
+    """
+    머신러닝에 사용할 데이터 한번에 불러오기
+    """
+
+    datasets = []
+
+    indicators = [
+        CD91,
+        CPI,
+        USD_KRW,
+        M2,
+        HOUSEHOLD_CREDIT,
+        GDP
+    ]
+
+    for info in indicators:
+
+        df = get_ecos_data(
+            info["stat_code"],
+            info["item_code"],
+            start_date,
+            end_date
+        )
+
+        if df.empty:
+            continue
+
+        df = rename_series(df, info["column"])
+
+        datasets.append(df)
+
+    if not datasets:
+        return pd.DataFrame()
+
+    return merge_dataframes(datasets)
