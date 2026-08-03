@@ -185,9 +185,6 @@ elif app_mode == "👤 1. 개인 맞춤 재무 리포트":
         else:
             st.success(f"✅ **DSR 안전 ({personal_dsr}%)**: 감당 가능한 안정적 수준입니다.")
         
-        # 테이블을 가로 전체 크기(use_container_width)로 시원하게 출력
-        st.dataframe(pd.DataFrame(sim_data), use_container_width=True)
-
         # 🌟 개인 모듈에도 최근 1년 금리 데이터 조회 기능 포함
         with st.expander("🔍 최근 1년 기준 CD금리 데이터 목록 보기 (최근순)"):
             st.dataframe(df_cd_history.sort_values(by="연월", ascending=False), use_container_width=True)
