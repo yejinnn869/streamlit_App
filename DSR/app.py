@@ -184,19 +184,6 @@ elif app_mode == "👤 1. 개인 맞춤 재무 리포트":
             st.warning(f"⚠️ **DSR 주의 ({personal_dsr}%)**: 규제 한도(40%)에 근접했습니다.")
         else:
             st.success(f"✅ **DSR 안전 ({personal_dsr}%)**: 감당 가능한 안정적 수준입니다.")
-
-        # 🌟 공간을 넓혀 금리 변동 시뮬레이션 표를 탁 트이게 출력
-        st.subheader("📈 금리 변동에 따른 월 지출 변화 시뮬레이션")
-        rates_to_compare = [selected_rate - 0.5, selected_rate, selected_rate + 0.5]
-        sim_data = []
-        for r in rates_to_compare:
-            pay, dsr = calculate_personal_dsr(income_input, loan_input, years_input, r)
-            sim_data.append({
-                "금리 시나리오": f"{r:.1f}%",
-                "예상 월 원리금": f"{pay:,} 원",
-                "월 지출 변동 폭": f"{(pay - monthly_pay):+,} 원",
-                "개인 DSR": f"{dsr}%"
-            })
         
         # 테이블을 가로 전체 크기(use_container_width)로 시원하게 출력
         st.dataframe(pd.DataFrame(sim_data), use_container_width=True)
