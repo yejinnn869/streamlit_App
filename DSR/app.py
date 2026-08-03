@@ -37,12 +37,12 @@ def fetch_ecos_history(stat_code, item_code, frequency="M"):
     
     # 예외 발생 시 기본 백업 데이터
     dates = pd.date_range(end=datetime.datetime.now(), periods=12, freq='ME').strftime("%Y-%m")
-    rates = [3.85, 3.83, 3.78, 3.75, 3.70, 3.68, 3.65, 3.60, 3.58, 3.56, 3.55, 3.55]
+    rates = [2.53, 2.57, 2.55, 2.80, 1.81, 2.73, 2.81, 2.82, 2.81, 2.86, 2.92, 2.95]
     return pd.DataFrame({"연월": dates, "CD금리(%)": rates})
 
 # 최근 1년 CD금리 시계열 데이터 호출
 df_cd_history = fetch_ecos_history("722Y001", "010500000")
-real_cd_rate = df_cd_history.iloc[-1]["CD금리(%)"] if not df_cd_history.empty else 3.55
+real_cd_rate = df_cd_history.iloc[-1]["CD금리(%)"] if not df_cd_history.empty else 2.95
 
 # 소비자물가 및 가계부채 백업/API 수치
 real_cpi_rate = 0.1
