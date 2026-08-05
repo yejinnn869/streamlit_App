@@ -101,7 +101,7 @@ if app_mode == "🌐 2. 국가 거시 리스크 예측":
         policy_input = st.select_slider(
             "정부 금융지원 정책 강도 지수",
             options=[0, 1, 2, 3],
-            value=1,
+            value=0,
             format_func=lambda x: ["0단계 (지원 없음)", "1단계 (만기 연장)", "2단계 (부분 상환유예)", "3단계 (전면 상환유예)"][x]
         )
         
