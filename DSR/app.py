@@ -53,9 +53,25 @@ real_debt_growth = 0.5
 # 1. 머신러닝 및 금융공학 계산 함수
 # ==========================================
 def predict_macro_risk(cpi_rate, debt_growth, policy_index, base_cd_rate):
-    pred_interest_rate = base_cd_rate + ((cpi_rate - 2.0) * 0.25) + (debt_growth * 0.08) - (policy_index * 0.15)
-    pred_national_dsr = 38.5 + (pred_interest_rate * 1.1) + (debt_growth * 0.35) - (policy_index * 1.8)
-    pred_default_rate = 0.35 + (pred_interest_rate * 0.12) + (cpi_rate * 0.08) - (policy_index * 0.22)
+    pred_interest_rate = (
+    base_cd_rate
+    + (cpi_rate-2)*0.10
+    + debt_growth*0.03
+    - policy_index*0.08
+)
+
+pred_national_dsr = (
+    37
+    + (pred_interest_rate-real_cd_rate)*2
+    + debt_growth*0.5
+)
+
+pred_default_rate = (
+    0.45
+    + (pred_interest_rate-real_cd_rate)*0.10
+    + debt_growth*0.03
+    - policy_index*0.05
+)
     pred_default_rate = max(0.1, pred_default_rate)
     return round(pred_interest_rate, 2), round(pred_national_dsr, 1), round(pred_default_rate, 2)
 
